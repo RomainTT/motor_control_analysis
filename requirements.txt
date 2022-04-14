@@ -1,0 +1,11 @@
+ipython
+jupyter
+numpy
+scipy
+pandas
+matplotlib
+seaborn
+ruamel.yaml
+pyyaml
+tqdm
+Pillow
