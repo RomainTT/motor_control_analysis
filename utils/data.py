@@ -9,10 +9,11 @@ import pickle
 from . import signal as sigutils
 
 
-def store_op_data(file_path, data_type, system_name, processing_results, op_key,
-                  **kwargs):
+def store_op_data(
+    file_path, data_type, system_name, processing_results, op_key, **kwargs
+):
     """Store data of an operating point in a pickle file.
-    
+
     Args:
         file_path: (str) Path to the file to write.
         data_type: (str) Type of the data, 'sine' or 'step'
@@ -22,69 +23,68 @@ def store_op_data(file_path, data_type, system_name, processing_results, op_key,
             * 2-tuple for the current limits
             * 2-tuple for the temperature limits
             * load direction
-    
+
     Returns:
         None
     """
     # Initialize the dictionary to store in the pickle file
     stored_dict = {
-        'data_type': data_type,
-        'processing_results': processing_results,
-        'operating_point': {
-            'system_name': system_name,
-            'current_range': op_key[0],
-            'temperature_range': op_key[1],
-            'load_direction': op_key[2],
-        }
+        "data_type": data_type,
+        "processing_results": processing_results,
+        "operating_point": {
+            "system_name": system_name,
+            "current_range": op_key[0],
+            "temperature_range": op_key[1],
+            "load_direction": op_key[2],
+        },
     }
 
-    # Store kwargs
+    # Store kwargs
     stored_dict.update(kwargs)
 
-    if not file_path.endswith('.pickle'):
-        file_path = file_path + '.pickle'
+    if not file_path.endswith(".pickle"):
+        file_path = file_path + ".pickle"
 
-    with open(file_path, 'wb') as f:
+    with open(file_path, "wb") as f:
         pickle.dump(stored_dict, f)
 
 
 def load_op_data(file_path):
     """Load data of an operating point from a pickle file.
-    
+
     Args:
         file_path: (str) Path to the pickle file
-    
+
     Returns:
         The object contained in the pickle file, which a
         dictionnary in this case.
     """
-    if not file_path.endswith('.pickle'):
-        file_path = file_path + '.pickle'
+    if not file_path.endswith(".pickle"):
+        file_path = file_path + ".pickle"
 
     if not os.path.isfile(file_path):
-        raise FileNotFoundError('{} does not exist.'.format(file_path))
+        raise FileNotFoundError("{} does not exist.".format(file_path))
 
-    with open(file_path, 'rb') as f:
+    with open(file_path, "rb") as f:
         data = pickle.load(f)
 
     return data
 
 
-def get_all_processed_data(csv_paths, system_name_override=None,
-                           filter_bad_steps=True):
+def get_all_processed_data(csv_paths, system_name_override=None, filter_bad_steps=True):
     """Get all the processing results for steps or sines from the given CSV files.
-    
+
     Args:
         csv_paths: (List[str]) paths to CSV files containing the step or sine signals.
             It is determined if it is a step file or a sine file by searching
             for 'step' or 'sine' in the filename.
-        system_name_override: (str) New name of the system which will override the 
+        system_name_override: (str) New name of the system which will override the
             one written in the metadata file.
         filter_bad_steps: (bool) set to True (default) to discard steps that
             have inconsistencies and should not be taken into account. To know
             more about this filter, read signal.control.process_steps_signal
             This arguments has an effect on steps only.
-    
+
     Returns:
         A list of ProcessingResult objects.
     """
@@ -97,36 +97,39 @@ def get_all_processed_data(csv_paths, system_name_override=None,
     #  * Get metadata of this measurement
     #  * Process data to get KPIs
     #  * Add results to the final dictionary of results
-    for csv_path in tqdm_notebook(csv_paths, desc='CSV files', leave=False):
+    for csv_path in tqdm_notebook(csv_paths, desc="CSV files", leave=False):
         # For each .csv file, there should be a file containing metadata
-        metadata_path = os.path.splitext(csv_path)[0] + '.yaml'
+        metadata_path = os.path.splitext(csv_path)[0] + ".yaml"
         if os.path.isfile(metadata_path):
-            with open(metadata_path, 'r') as stream:
+            with open(metadata_path, "r") as stream:
                 full_metadata = yaml.safe_load(stream)
-            metadata = full_metadata['measurement_info']
+            metadata = full_metadata["measurement_info"]
             if system_name_override:
-                metadata['system_name'] = system_name_override
+                metadata["system_name"] = system_name_override
         else:
-            raise FileNotFoundError("Cannot find metadata file {}".format(metadata_path))
+            raise FileNotFoundError(
+                "Cannot find metadata file {}".format(metadata_path)
+            )
         # Process the signal
-        if '_step_' in csv_path:
-            new_data = sigutils.control.process_steps_signal(csv_path,
-                                                             metadata,
-                                                             filter_bad_steps)
-        elif '_sine_' in csv_path:
+        if "_step_" in csv_path:
+            new_data = sigutils.control.process_steps_signal(
+                csv_path, metadata, filter_bad_steps
+            )
+        elif "_sine_" in csv_path:
             new_data = [sigutils.control.process_sine_signal(csv_path, metadata)]
         else:
-            raise RuntimeError("Cannot find _step_ or _sine_ in the filename: {}".format(csv_path))
+            raise RuntimeError(
+                "Cannot find _step_ or _sine_ in the filename: {}".format(csv_path)
+            )
         # Store the results
         all_data.extend(new_data)
 
     return all_data
 
 
-def get_operating_groups(processing_results,
-                         current_bins,
-                         temperature_bins,
-                         min_size=50):
+def get_operating_groups(
+    processing_results, current_bins, temperature_bins, min_size=50
+):
     """Split results into groups, one for each operating point.
 
     Results will be split into groups in function of:
@@ -170,41 +173,47 @@ def get_operating_groups(processing_results,
             for _bin in bins:
                 if len(_bin) != 2:
                     raise ValueError("bins must contain 2-tuples.")
-                if (not isinstance(_bin[0], (float, int)) or
-                    not isinstance(_bin[1], (float, int))):
-                    raise ValueError("bins must contain tuples of strictly "
-                                     "positive floats.")
+                if not isinstance(_bin[0], (float, int)) or not isinstance(
+                    _bin[1], (float, int)
+                ):
+                    raise ValueError(
+                        "bins must contain tuples of strictly " "positive floats."
+                    )
                 if _bin[0] >= _bin[1]:
-                    raise ValueError("bins must contain 2-tuples of float "
-                                     "where the first float is lower than the "
-                                     "second.")
+                    raise ValueError(
+                        "bins must contain 2-tuples of float "
+                        "where the first float is lower than the "
+                        "second."
+                    )
         else:
-            raise ValueError("bins must be either a number or a list of "
-                             "2-tuples")
+            raise ValueError("bins must be either a number or a list of " "2-tuples")
 
     ret = {}
     uncategorisable = []
 
     for res_id, res_obj in tqdm_notebook(
-            enumerate(processing_results), desc='Results', leave=False):
+        enumerate(processing_results), desc="Results", leave=False
+    ):
 
         # Get parameters to find the operating point
         # For steps
-        if res_obj.metadata['data_type'] == 'step':
-            current = res_obj.kpis['SteadyStateCurrent']
-            temp = res_obj.kpis['Temperature']
+        if res_obj.metadata["data_type"] == "step":
+            current = res_obj.kpis["SteadyStateCurrent"]
+            temp = res_obj.kpis["Temperature"]
 
             # Default load direction is numpy.nan
-            if ('load_direction' in res_obj.metadata
-                and res_obj.metadata['load_direction'] is not None):
-                dirload = res_obj.metadata['load_direction']
+            if (
+                "load_direction" in res_obj.metadata
+                and res_obj.metadata["load_direction"] is not None
+            ):
+                dirload = res_obj.metadata["load_direction"]
             else:
                 dirload = numpy.nan
 
         # For sine waves
-        elif res_obj.metadata['data_type'] == 'sine':
-            current = res_obj.kpis['MeanCurrent']
-            temp = res_obj.kpis['MeanTemperature']
+        elif res_obj.metadata["data_type"] == "sine":
+            current = res_obj.kpis["MeanCurrent"]
+            temp = res_obj.kpis["MeanTemperature"]
             dirload = 0  # default for sine
 
         # Do not consider NaN values
@@ -220,7 +229,8 @@ def get_operating_groups(processing_results,
         # given as argument
         get_bin_range = lambda val, bin_size: (
             abs(bin_size * (val // bin_size)),
-            abs(bin_size * (val // bin_size) + bin_size)) # yapf: disable
+            abs(bin_size * (val // bin_size) + bin_size),
+        )  # yapf: disable
         if isinstance(current_bins, (float, int)):
             # Compute the bin range of current and temperature,
             # based on given bin sizes

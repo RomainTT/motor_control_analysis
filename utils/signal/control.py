@@ -32,14 +32,14 @@ def process_sine_signal(csv_path, metadata, filter_signals=False):
             * dataframe: a pandas dataframe containing the raw signals.
             * metadata: a dictionary of metadata.
             * kpis: a dictionary of computed KPIs.
-        
+
     """
     # --------------------------------------------------------------------------
     # VARIABLES INITIALIZATION
     # --------------------------------------------------------------------------
-    metadata['data_type'] = 'sine'
+    metadata["data_type"] = "sine"
 
-    joint_name = metadata['system_name']
+    joint_name = metadata["system_name"]
 
     # Initialize the dictionary of KPI that will be returned
     kpis = {}
@@ -61,9 +61,13 @@ def process_sine_signal(csv_path, metadata, filter_signals=False):
 
     # If they are not there, compute extra-signals that are not retrieved from
     # the robot.
-    extra_cols = ("TimeDispersion", joint_name + "CommandSpeed",
-                  joint_name + "CommandAcceleration",
-                  joint_name + "SensorSpeed", joint_name + "SensorAcceleration")
+    extra_cols = (
+        "TimeDispersion",
+        joint_name + "CommandSpeed",
+        joint_name + "CommandAcceleration",
+        joint_name + "SensorSpeed",
+        joint_name + "SensorAcceleration",
+    )
 
     # Check if extra cols are already there before creating them
     if not all([c in main_dataframe.columns for c in extra_cols]):
@@ -72,19 +76,22 @@ def process_sine_signal(csv_path, metadata, filter_signals=False):
         time_disp_sec = main_dataframe["TimeDispersion"]
         # Compute command speed
         main_dataframe[joint_name + "CommandSpeed"] = (
-            main_dataframe[pos_act_col].diff(1) / time_disp_sec)
+            main_dataframe[pos_act_col].diff(1) / time_disp_sec
+        )
         # Compute command acceleration
-        main_dataframe[joint_name + "CommandAcceleration"] = main_dataframe[
-            joint_name +
-            "CommandSpeed"].diff(1) / main_dataframe["TimeDispersion"]
+        main_dataframe[joint_name + "CommandAcceleration"] = (
+            main_dataframe[joint_name + "CommandSpeed"].diff(1)
+            / main_dataframe["TimeDispersion"]
+        )
         # Compute sensor speed
-        main_dataframe[
-            joint_name +
-            "SensorSpeed"] = main_dataframe[pos_sen_col].diff(1) / time_disp_sec
+        main_dataframe[joint_name + "SensorSpeed"] = (
+            main_dataframe[pos_sen_col].diff(1) / time_disp_sec
+        )
         # Compute sensor acceleration
-        main_dataframe[joint_name + "SensorAcceleration"] = main_dataframe[
-            joint_name +
-            "SensorSpeed"].diff(1) / main_dataframe["TimeDispersion"]
+        main_dataframe[joint_name + "SensorAcceleration"] = (
+            main_dataframe[joint_name + "SensorSpeed"].diff(1)
+            / main_dataframe["TimeDispersion"]
+        )
     else:
         time_disp_sec = main_dataframe["TimeDispersion"]
 
@@ -99,37 +106,46 @@ def process_sine_signal(csv_path, metadata, filter_signals=False):
         # Hence we apply a 20 Hz low-pass filter (Butterworth) order 5 to get
         # quick attenuation.
         for column in main_dataframe.columns:
-            if (joint_name in column and "Current" not in column and
-                    "Backlash" not in column):
+            if (
+                joint_name in column
+                and "Current" not in column
+                and "Backlash" not in column
+            ):
                 # Replace "NaN" with 0
                 main_dataframe[column] = main_dataframe[column].replace(
-                    to_replace=numpy.nan, value=0.0)
+                    to_replace=numpy.nan, value=0.0
+                )
                 # Apply filter
                 main_dataframe[column] = pandas.Series(
                     butter_lowpass_filter(
                         data=numpy.array(main_dataframe[column]),
                         cutoff=20,
                         fs=1.0 / sample_rate,
-                        order=5))
+                        order=5,
+                    )
+                )
 
     # Compute sine frequency in Hz, based on command signal
     spectrum = numpy.fft.fft(main_dataframe[pos_act_col])
     frequencies = numpy.fft.fftfreq(len(spectrum), sample_rate)
     # Take main positive frequency
-    kpis['Frequency'] = frequencies[spectrum[:len(spectrum) // 2].argmax()]
+    kpis["Frequency"] = frequencies[spectrum[: len(spectrum) // 2].argmax()]
 
     # Compute position delay, based on phase diff (in s)
     # To obtain positive delay between command and sensor,
     # compute correlation(sensor, actuator) and search for maximum on the
     # second half of the correlation result
     xcorr = numpy.correlate(
-        main_dataframe[pos_sen_col], main_dataframe[pos_act_col], mode='full')
+        main_dataframe[pos_sen_col], main_dataframe[pos_act_col], mode="full"
+    )
     kpis["PhaseShiftTime"] = (
-        xcorr[xcorr.size // 2:].argmax()) * sample_rate  # Convert in time
+        xcorr[xcorr.size // 2 :].argmax()
+    ) * sample_rate  # Convert in time
 
     # force the phase shift to be in [-pi:pi]
-    kpis['PhaseShiftAngle'] = (
-        2.0 * numpy.pi * kpis["PhaseShiftTime"] * kpis['Frequency'])
+    kpis["PhaseShiftAngle"] = (
+        2.0 * numpy.pi * kpis["PhaseShiftTime"] * kpis["Frequency"]
+    )
 
     # Compute RMS diff (in %)
     rms_act = get_rms(main_dataframe[pos_act_col])
@@ -145,20 +161,22 @@ def process_sine_signal(csv_path, metadata, filter_signals=False):
     kpis["Offset"] = mean_sen - mean_act
 
     # Compute mean current
-    kpis['MeanCurrent'] = main_dataframe[joint_name +
-                                         "ElectricCurrentSensorValue"].mean()
+    kpis["MeanCurrent"] = main_dataframe[
+        joint_name + "ElectricCurrentSensorValue"
+    ].mean()
 
     # Compute max current
-    kpis['MaximumCurrent'] = main_dataframe[joint_name +
-                                            "ElectricCurrentSensorValue"].max()
+    kpis["MaximumCurrent"] = main_dataframe[
+        joint_name + "ElectricCurrentSensorValue"
+    ].max()
 
     # Compute mean temperature
-    kpis['MeanTemperature'] = main_dataframe[joint_name +
-                                             "TemperatureValue"].mean()
+    kpis["MeanTemperature"] = main_dataframe[joint_name + "TemperatureValue"].mean()
 
     # Maximum amplitude
-    kpis['MaximumAmplitude'] = (main_dataframe[pos_act_col].max() -
-                                main_dataframe[pos_act_col].min()) / 2
+    kpis["MaximumAmplitude"] = (
+        main_dataframe[pos_act_col].max() - main_dataframe[pos_act_col].min()
+    ) / 2
 
     # --------------------------------------------------------------------------
     # OUTPUT FINALIZATION
@@ -166,9 +184,7 @@ def process_sine_signal(csv_path, metadata, filter_signals=False):
     # Each result must be independant, so copies are added to avoid
     # any common object among different steps. Otherwise, if an upper
     # layer program modifies one step, it can impact the others.
-    result = ProcessingResult(main_dataframe.copy(),
-                              copy.deepcopy(metadata),
-                              kpis)
+    result = ProcessingResult(main_dataframe.copy(), copy.deepcopy(metadata), kpis)
     return result
 
 
@@ -189,7 +205,7 @@ def process_steps_signal(csv_path, metadata, filter_bad_steps=True):
             This arguments has an effect on steps only.
 
     Returns:
-        (list) List of ProcessingResult objects. 
+        (list) List of ProcessingResult objects.
           Each object corresponds to a single step of the signal.
           ProcessingResult contains 3 attributes:
             * dataframe: a pandas dataframe containing the signal of this step.
@@ -201,9 +217,9 @@ def process_steps_signal(csv_path, metadata, filter_bad_steps=True):
     # --------------------------------------------------------------------------
     results = []
 
-    metadata['data_type'] = 'step'
+    metadata["data_type"] = "step"
 
-    joint_name = metadata['system_name']
+    joint_name = metadata["system_name"]
 
     # --------------------------------------------------------------------------
     # FILES INITIALIZATION
@@ -225,28 +241,35 @@ def process_steps_signal(csv_path, metadata, filter_bad_steps=True):
 
     # If they are not there, compute extra-signals that are not retrieved from
     # the robot.
-    extra_cols = ("TimeDispersion", joint_name + "CommandSpeed",
-                  joint_name + "CommandAcceleration",
-                  joint_name + "SensorSpeed", joint_name + "SensorAcceleration")
+    extra_cols = (
+        "TimeDispersion",
+        joint_name + "CommandSpeed",
+        joint_name + "CommandAcceleration",
+        joint_name + "SensorSpeed",
+        joint_name + "SensorAcceleration",
+    )
     if not all([c in main_dataframe.columns for c in extra_cols]):
         # Compute time dispersion
         main_dataframe["TimeDispersion"] = main_dataframe["Time"].diff(1)
         time_disp_sec = main_dataframe["TimeDispersion"]
         # Compute command speed
         main_dataframe[joint_name + "CommandSpeed"] = (
-            main_dataframe[pos_act_col].diff(1) / time_disp_sec)
+            main_dataframe[pos_act_col].diff(1) / time_disp_sec
+        )
         # Compute command acceleration
         main_dataframe[joint_name + "CommandAcceleration"] = (
-            main_dataframe[joint_name + "CommandSpeed"].diff(1) /
-            main_dataframe["TimeDispersion"])
+            main_dataframe[joint_name + "CommandSpeed"].diff(1)
+            / main_dataframe["TimeDispersion"]
+        )
         # Compute sensor speed
-        main_dataframe[
-            joint_name +
-            "SensorSpeed"] = main_dataframe[pos_sen_col].diff(1) / time_disp_sec
+        main_dataframe[joint_name + "SensorSpeed"] = (
+            main_dataframe[pos_sen_col].diff(1) / time_disp_sec
+        )
         # Compute sensor acceleration
         main_dataframe[joint_name + "SensorAcceleration"] = (
-            main_dataframe[joint_name + "SensorSpeed"].diff(1) /
-            main_dataframe["TimeDispersion"])
+            main_dataframe[joint_name + "SensorSpeed"].diff(1)
+            / main_dataframe["TimeDispersion"]
+        )
     else:
         time_disp_sec = main_dataframe["TimeDispersion"]
 
@@ -258,9 +281,8 @@ def process_steps_signal(csv_path, metadata, filter_bad_steps=True):
     # Extract sample numbers and time at which each step occurs:
     # Detect all the speed command peaks
     peaks, peak_prop = find_peaks(
-                x=abs(main_dataframe[joint_name + "CommandSpeed"]),
-                height=0.5,
-                distance=20)  # 20*0.012s = 220ms or 20*0.020s = 400ms
+        x=abs(main_dataframe[joint_name + "CommandSpeed"]), height=0.5, distance=20
+    )  # 20*0.012s = 220ms or 20*0.020s = 400ms
 
     # Each cycle is defined by two sample indexes, one before and one after the
     # step.
@@ -288,8 +310,9 @@ def process_steps_signal(csv_path, metadata, filter_bad_steps=True):
             continue
 
     # Build tuples for every step cycles
-    step_cycles_list = [(step_occ[i], step_occ[i + 1])
-                        for i in range(0, len(step_occ) - 1)] # yapf: disable
+    step_cycles_list = [
+        (step_occ[i], step_occ[i + 1]) for i in range(0, len(step_occ) - 1)
+    ]  # yapf: disable
 
     # For each step cycle, compute useful information and store them
     # * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
@@ -297,57 +320,68 @@ def process_steps_signal(csv_path, metadata, filter_bad_steps=True):
     for cycle_number, (ki, kf) in enumerate(step_cycles_list):
         loc_ki = main_dataframe.index[ki]
         loc_kf = main_dataframe.index[kf]
-        
+
         step_cycle_pos_sen = main_dataframe[pos_sen_col].loc[loc_ki:loc_kf]
-        
+
         # This dictionary will contain every KPI of this step
         step_kpis = {}
 
         # CycleTimes:= for each cycle, a tuple: (t_init, t_end)
-        step_kpis["CycleTimes"] = (main_dataframe["Time"].iloc[ki],
-                                   main_dataframe["Time"].iloc[kf])
+        step_kpis["CycleTimes"] = (
+            main_dataframe["Time"].iloc[ki],
+            main_dataframe["Time"].iloc[kf],
+        )
 
         # Initial and final values for command
         step_kpis["InitialCommandValue"] = main_dataframe[pos_act_col].iloc[ki]
         step_kpis["FinalCommandValue"] = main_dataframe[pos_act_col].iloc[kf]
 
         # Step amplitude for command
-        step_kpis["CommandStepAmplitude"] = step_kpis[
-            "FinalCommandValue"] - step_kpis["InitialCommandValue"]
+        step_kpis["CommandStepAmplitude"] = (
+            step_kpis["FinalCommandValue"] - step_kpis["InitialCommandValue"]
+        )
 
         # Step direction : increasing or decreasing angle
-        step_kpis["StepDirection"] = "Increasing" if step_kpis[
-            "CommandStepAmplitude"] > 0 else "Decreasing"
-        
+        step_kpis["StepDirection"] = (
+            "Increasing" if step_kpis["CommandStepAmplitude"] > 0 else "Decreasing"
+        )
+
         # Maximum speed for this cycle
         step_kpis["MaximumSpeed"] = numpy.max(
-            abs(main_dataframe[joint_name + "SensorSpeed"].iloc[ki:kf]))
+            abs(main_dataframe[joint_name + "SensorSpeed"].iloc[ki:kf])
+        )
 
         # Step command speed
         if step_kpis["StepDirection"] == "Increasing":
             ramp_stop = main_dataframe.loc[loc_ki:loc_kf][
-                main_dataframe.loc[loc_ki:loc_kf, pos_act_col] >= step_kpis["FinalCommandValue"]
-                ].index[0]
+                main_dataframe.loc[loc_ki:loc_kf, pos_act_col]
+                >= step_kpis["FinalCommandValue"]
+            ].index[0]
         elif step_kpis["StepDirection"] == "Decreasing":
             ramp_stop = main_dataframe.loc[loc_ki:loc_kf][
-                main_dataframe.loc[loc_ki:loc_kf, pos_act_col] <= step_kpis["FinalCommandValue"]
-                ].index[0]
-        ramp_duration = (main_dataframe.loc[ramp_stop, 'Time'] - main_dataframe.loc[loc_ki, 'Time'])
+                main_dataframe.loc[loc_ki:loc_kf, pos_act_col]
+                <= step_kpis["FinalCommandValue"]
+            ].index[0]
+        ramp_duration = (
+            main_dataframe.loc[ramp_stop, "Time"] - main_dataframe.loc[loc_ki, "Time"]
+        )
         step_kpis["RampDuration"] = ramp_duration
         step_kpis["CommandSpeed"] = step_kpis["CommandStepAmplitude"] / ramp_duration
 
         # Maximum acceleration for this cycle
         step_kpis["MaximumAcceleration"] = numpy.max(
-            abs(main_dataframe[joint_name + "SensorAcceleration"].iloc[ki:kf]))
+            abs(main_dataframe[joint_name + "SensorAcceleration"].iloc[ki:kf])
+        )
 
         # Maximum current for this cycle
         step_kpis["MaximumCurrent"] = numpy.max(
-            abs(main_dataframe[joint_name +
-                               "ElectricCurrentSensorValue"].iloc[ki:kf]))
+            abs(main_dataframe[joint_name + "ElectricCurrentSensorValue"].iloc[ki:kf])
+        )
 
         # Temperature at the beginning of the cycle
-        step_kpis["Temperature"] = main_dataframe[joint_name +
-                                                  "TemperatureValue"].iloc[ki]
+        step_kpis["Temperature"] = main_dataframe[joint_name + "TemperatureValue"].iloc[
+            ki
+        ]
 
         # Settling time --------------------------------------------------------
         # To determine the settling time, we don't want to use an error band because
@@ -385,7 +419,7 @@ def process_steps_signal(csv_path, metadata, filter_bad_steps=True):
             Returns:
                 last_rec: (bool) True if this was the last recursion.
                 index: (int) index of the dataframe from which the
-                    steady state starts. 
+                    steady state starts.
                     numpy.nan if the steady has not been found.
                 static_value: (float) mean value of the steady state.
                     numpy.nan if the steady has not been found.
@@ -402,8 +436,7 @@ def process_steps_signal(csv_path, metadata, filter_bad_steps=True):
             if max_diff > noise_limit:
                 # Static part not found.
                 # Recursively call this function with right part of the dichotomy
-                middle = (
-                    signal.index[0] + (signal.index[-1] - signal.index[0]) // 2)
+                middle = signal.index[0] + (signal.index[-1] - signal.index[0]) // 2
                 # Right part of the dichotomy
                 subsig_start = middle
                 subsig_stop = signal.index[-1]
@@ -412,12 +445,13 @@ def process_steps_signal(csv_path, metadata, filter_bad_steps=True):
                     return True, numpy.nan, numpy.nan
                 # Else, continue to search on the right part of the dichotomy
                 last, index, static_value = _find_steady_state(
-                    signal.loc[subsig_start:subsig_stop], noise_ratio, step_init_value)
+                    signal.loc[subsig_start:subsig_stop], noise_ratio, step_init_value
+                )
                 if last and index is not numpy.nan:
                     # Extend signal part to the left
                     # to be sure to catch the very beginning of the static part
                     noise_limit = noise_ratio * abs(static_value - step_init_value)
-                    while (abs(signal.loc[index - 1] - static_value) <= noise_limit):
+                    while abs(signal.loc[index - 1] - static_value) <= noise_limit:
                         # Let's be careful not to exceed the left limit
                         if (index - 1) > signal.index[0]:
                             index -= 1
@@ -429,37 +463,43 @@ def process_steps_signal(csv_path, metadata, filter_bad_steps=True):
                 return True, signal.index[0], mean
 
         (last, loc_settling, static_value) = _find_steady_state(
-            step_cycle_pos_sen, noise, step_cycle_pos_sen.iloc[0])
+            step_cycle_pos_sen, noise, step_cycle_pos_sen.iloc[0]
+        )
         if loc_settling is numpy.nan:
             step_kpis["SettlingTime"] = numpy.nan
         else:
             step_kpis["SettlingTime"] = (
-                main_dataframe["Time"].loc[loc_settling] -
-                main_dataframe["Time"].iloc[ki])
+                main_dataframe["Time"].loc[loc_settling]
+                - main_dataframe["Time"].iloc[ki]
+            )
         # End of settling time -------------------------------------------------
-        
+
         # Initial and final values for sensor
         step_kpis["InitialSensorValue"] = main_dataframe[pos_sen_col].iloc[ki]
-        step_kpis["FinalSensorValue"] = numpy.mean(main_dataframe[pos_sen_col].loc[loc_settling:loc_kf])
+        step_kpis["FinalSensorValue"] = numpy.mean(
+            main_dataframe[pos_sen_col].loc[loc_settling:loc_kf]
+        )
 
         # Step amplitude for sensor
-        step_kpis["SensorStepAmplitude"] = (step_kpis["FinalSensorValue"] - 
-                                            step_kpis["InitialSensorValue"])
-        
-        # In order to compute 10% 90% rising times and overshoot we need
-        # a normalized signal of the position sensor
-        norm_pos_sen = ((step_cycle_pos_sen 
-                         - step_kpis["InitialSensorValue"]) 
-                        / step_kpis["SensorStepAmplitude"])
-                
+        step_kpis["SensorStepAmplitude"] = (
+            step_kpis["FinalSensorValue"] - step_kpis["InitialSensorValue"]
+        )
+
+        # In order to compute 10% 90% rising times and overshoot we need
+        # a normalized signal of the position sensor
+        norm_pos_sen = (
+            step_cycle_pos_sen - step_kpis["InitialSensorValue"]
+        ) / step_kpis["SensorStepAmplitude"]
+
         # Rising time = t90 - t10 ----------------------------------------------
         # Measure the instant at which the output reaches 10% (t_10) of the amplitude of the sensor
         # …starting from the initial sensor value
         s_over = norm_pos_sen[norm_pos_sen > 0.1]
         if s_over.size > 0:
             loc_10 = s_over.index[0]
-            step_kpis["RisingTime_0.1"] = (main_dataframe["Time"].loc[loc_10]
-                                           - main_dataframe["Time"].iloc[ki])
+            step_kpis["RisingTime_0.1"] = (
+                main_dataframe["Time"].loc[loc_10] - main_dataframe["Time"].iloc[ki]
+            )
         else:
             # output is never greater than 10%
             loc_10 = numpy.nan
@@ -469,28 +509,32 @@ def process_steps_signal(csv_path, metadata, filter_bad_steps=True):
         s_over = norm_pos_sen[norm_pos_sen > 0.9]
         if s_over.size > 0:
             loc_90 = s_over.index[0]
-            step_kpis["RisingTime_0.9"] = (main_dataframe["Time"].loc[loc_90]
-                                           - main_dataframe["Time"].iloc[ki])
+            step_kpis["RisingTime_0.9"] = (
+                main_dataframe["Time"].loc[loc_90] - main_dataframe["Time"].iloc[ki]
+            )
         else:
             # output is never greater than 90%
             step_kpis["RisingTime_0.9"] = numpy.nan
         # Compute the rise_time = t90 - t10. If one is "nan", then it will be "nan"
-        if (step_kpis["RisingTime_0.1"] is numpy.nan 
-            or step_kpis["RisingTime_0.9"] is numpy.nan):
+        if (
+            step_kpis["RisingTime_0.1"] is numpy.nan
+            or step_kpis["RisingTime_0.9"] is numpy.nan
+        ):
             step_kpis["RisingTime_0.1_to_0.9"] = numpy.nan
             step_kpis["RisingSpeed"] = numpy.nan
         else:
             step_kpis["RisingTime_0.1_to_0.9"] = (
-                step_kpis["RisingTime_0.9"] - step_kpis["RisingTime_0.1"])
+                step_kpis["RisingTime_0.9"] - step_kpis["RisingTime_0.1"]
+            )
             if step_kpis["RisingTime_0.1_to_0.9"] > 0:
                 # Compute rising speed
                 step_kpis["RisingSpeed"] = (
-                    (0.8 * abs(step_kpis["SensorStepAmplitude"])) /
-                    step_kpis["RisingTime_0.1_to_0.9"])
+                    0.8 * abs(step_kpis["SensorStepAmplitude"])
+                ) / step_kpis["RisingTime_0.1_to_0.9"]
             else:
                 step_kpis["RisingSpeed"] = numpy.nan
         # End of Compute the rising time ---------------------------------------
-        
+
         # Overshoot ------------------------------------------------------------
         # check if there is an overshoot
         s_over = norm_pos_sen[norm_pos_sen > 1.0]
@@ -499,18 +543,23 @@ def process_steps_signal(csv_path, metadata, filter_bad_steps=True):
             peaks, peak_prop = find_peaks(
                 x=norm_pos_sen.loc[:loc_settling],
                 height=1.0,
-                distance=len(norm_pos_sen))
+                distance=len(norm_pos_sen),
+            )
             if len(peaks) > 0:
                 # Get overshoot time
                 iloc_overshoot = ki + peaks[0]
                 step_kpis["OvershootTime"] = (
-                    main_dataframe['Time'].iloc[iloc_overshoot]
-                    - main_dataframe['Time'].iloc[ki])
+                    main_dataframe["Time"].iloc[iloc_overshoot]
+                    - main_dataframe["Time"].iloc[ki]
+                )
                 # get overshoot magnitude in % and in rad
-                step_kpis["Overshoot"] = (main_dataframe[pos_sen_col].iloc[iloc_overshoot] - 
-                                          step_kpis["FinalSensorValue"])
-                step_kpis["OvershootPercentage"] = abs(100.0 * (step_kpis["Overshoot"] /
-                                                   step_kpis["SensorStepAmplitude"]))
+                step_kpis["Overshoot"] = (
+                    main_dataframe[pos_sen_col].iloc[iloc_overshoot]
+                    - step_kpis["FinalSensorValue"]
+                )
+                step_kpis["OvershootPercentage"] = abs(
+                    100.0 * (step_kpis["Overshoot"] / step_kpis["SensorStepAmplitude"])
+                )
             else:
                 # peak was not correctly detected, this can induce error in KPI.
                 step_kpis["OvershootTime"] = numpy.nan
@@ -521,12 +570,14 @@ def process_steps_signal(csv_path, metadata, filter_bad_steps=True):
             step_kpis["Overshoot"] = 0  # No overshoot: 0 rad
             step_kpis["OvershootPercentage"] = 0  # No overshoot: 0 %
         # End of Overshoot -----------------------------------------------------
-        
+
         # Steady state current for this cycle ----------------------------------
         if loc_settling != numpy.nan:
             step_kpis["SteadyStateCurrent"] = numpy.mean(
-                main_dataframe[joint_name + "ElectricCurrentSensorValue"].
-                loc[loc_settling:loc_kf])
+                main_dataframe[joint_name + "ElectricCurrentSensorValue"].loc[
+                    loc_settling:loc_kf
+                ]
+            )
         else:
             step_kpis["SteadyStateCurrent"] = numpy.nan
 
@@ -536,11 +587,14 @@ def process_steps_signal(csv_path, metadata, filter_bad_steps=True):
         # Mean value is computed to avoid noise perturbation on final value
         if loc_settling != numpy.nan:
             step_kpis["SteadyStateError"] = numpy.mean(
-                main_dataframe[pos_act_col].loc[loc_settling:loc_kf] -
-                main_dataframe[pos_sen_col].loc[loc_settling:loc_kf])
-            step_kpis["SteadyStateErrorPercentage"] = 100 * \
-                (step_kpis["FinalSensorValue"] - step_kpis["FinalCommandValue"]) \
+                main_dataframe[pos_act_col].loc[loc_settling:loc_kf]
+                - main_dataframe[pos_sen_col].loc[loc_settling:loc_kf]
+            )
+            step_kpis["SteadyStateErrorPercentage"] = (
+                100
+                * (step_kpis["FinalSensorValue"] - step_kpis["FinalCommandValue"])
                 / step_kpis["CommandStepAmplitude"]
+            )
         else:
             step_kpis["SteadyStateError"] = numpy.nan
         # End of steady state error --------------------------------------------
@@ -548,8 +602,12 @@ def process_steps_signal(csv_path, metadata, filter_bad_steps=True):
         # Energy of acceleration during the steady state -----------------------
         if loc_settling != numpy.nan:
             step_kpis["SteadyStateAccelerationEnergy"] = numpy.sum(
-                numpy.square(main_dataframe[joint_name + "SensorAcceleration"].
-                             loc[loc_settling:loc_kf]))
+                numpy.square(
+                    main_dataframe[joint_name + "SensorAcceleration"].loc[
+                        loc_settling:loc_kf
+                    ]
+                )
+            )
         else:
             step_kpis["SteadyStateAccelerationEnergy"] = numpy.nan
         # End of energy --------------------------------------------------------
@@ -559,19 +617,23 @@ def process_steps_signal(csv_path, metadata, filter_bad_steps=True):
 
         # Duration of the ramp (actual) must be consistent with the one written
         # in metadata (theorical). ±15%
-        if (filter_bad_steps and
-            not (metadata["transition_duration"] * 0.85
-            <= ramp_duration * 1000  <=
-            metadata["transition_duration"] * 1.15)):
+        if filter_bad_steps and not (
+            metadata["transition_duration"] * 0.85
+            <= ramp_duration * 1000
+            <= metadata["transition_duration"] * 1.15
+        ):
             continue
         else:
             # Each result must be independant, so copies are added to avoid
             # any common object among different steps. Otherwise, if an upper
             # layer program modifies one step, it can impact the others.
             results.append(
-                ProcessingResult(main_dataframe.iloc[ki:kf].copy(),
-                                 copy.deepcopy(metadata),
-                                 step_kpis))
+                ProcessingResult(
+                    main_dataframe.iloc[ki:kf].copy(),
+                    copy.deepcopy(metadata),
+                    step_kpis,
+                )
+            )
 
         # End of processing for one step cycle -------------------------------------
 
@@ -584,13 +646,12 @@ def process_steps_signal(csv_path, metadata, filter_bad_steps=True):
     # End of [action_process_upper_joint_step] --------------------------------
 
 
-def get_normalized_position_timeseries(dataframe, command_offset,
-                                       command_amplitude):
+def get_normalized_position_timeseries(dataframe, command_offset, command_amplitude):
     """Get a noramlized position timeseries.
-    
+
     Offset and amplitude could be computed from the dataframe, but as it is already
     done by process_steps_signal() it is not necessary to do it again here.
-    
+
     Args:
         dataframe (pandas.DataFrame): the original dataframe
         command_offset (float): the initial offset of the command
@@ -605,7 +666,7 @@ def get_normalized_position_timeseries(dataframe, command_offset,
     cols = [c for c in dataframe.columns if "Position" in c]
 
     # Get the time but remove the offset to make it start at 0
-    time_series = dataframe['Time'] - dataframe['Time'].iloc[0]
+    time_series = dataframe["Time"] - dataframe["Time"].iloc[0]
 
     # Create the normalized dataframe with the Time only at first
     norm_df = pandas.DataFrame(time_series)
@@ -615,6 +676,6 @@ def get_normalized_position_timeseries(dataframe, command_offset,
         norm_df[col] = (dataframe[col] - command_offset) / command_amplitude
 
     # Set Time as index of this normalized dataframe
-    norm_df.set_index('Time')
+    norm_df.set_index("Time")
 
     return norm_df
